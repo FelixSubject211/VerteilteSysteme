@@ -8,11 +8,18 @@ public final class RegisterResponse implements Serializable {
 	private final String id;
 	InetSocketAddress left;
 	InetSocketAddress right;
+	boolean hasToken;
 
-	public RegisterResponse(String id, InetSocketAddress left, InetSocketAddress right) {
+	public RegisterResponse(
+			String id,
+			InetSocketAddress left,
+			InetSocketAddress right,
+			boolean hasToken
+	) {
 		this.id = id;
 		this.left = left;
 		this.right = right;
+		this.hasToken = hasToken;
 	}
 
 	public String getId() {
@@ -26,4 +33,6 @@ public final class RegisterResponse implements Serializable {
 	public InetSocketAddress getRight() {
 		return right;
 	}
+
+	public boolean hasToken() { return hasToken; }
 }
