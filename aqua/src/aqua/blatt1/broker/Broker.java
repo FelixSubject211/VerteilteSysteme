@@ -82,7 +82,6 @@ public class Broker {
             String id = UUID.randomUUID().toString();
             lock.writeLock().lock();
             clientCollection.add(id, address);
-            endpoint.send(address, new RegisterResponse(id));
 
             int clientIndex = clientCollection.indexOf(address);
             InetSocketAddress client = clientCollection.getClient(clientIndex);
@@ -91,7 +90,7 @@ public class Broker {
 
             lock.writeLock().unlock();
 
-            endpoint.send(address, new NeighborUpdate(left, right));
+            endpoint.send(address, new RegisterResponse(id,left,right));
             endpoint.send(left, new NeighborUpdate(null, client));
             endpoint.send(right, new NeighborUpdate(client, null));
         }
