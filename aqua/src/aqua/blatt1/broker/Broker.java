@@ -1,10 +1,7 @@
 package aqua.blatt1.broker;
 
 import aqua.blatt1.common.Properties;
-import aqua.blatt1.common.msgtypes.DeregisterRequest;
-import aqua.blatt1.common.msgtypes.HandoffRequest;
-import aqua.blatt1.common.msgtypes.RegisterRequest;
-import aqua.blatt1.common.msgtypes.RegisterResponse;
+import aqua.blatt1.common.msgtypes.*;
 import aqua.blatt1.poisoner.PoisonPill;
 import messaging.Endpoint;
 import messaging.Message;
@@ -86,15 +83,33 @@ public class Broker {
             lock.writeLock().lock();
             clientCollection.add(id, address);
             endpoint.send(address, new RegisterResponse(id));
+
+            int clientIndex = clientCollection.indexOf(address);
+            InetSocketAddress client = clientCollection.getClient(clientIndex);
+            InetSocketAddress left = clientCollection.getLeftNeighorOf(clientIndex);
+            InetSocketAddress right = clientCollection.getRightNeighorOf(clientIndex);
+
             lock.writeLock().unlock();
+
+            endpoint.send(address, new NeighborUpdate(left, right));
+            endpoint.send(left, new NeighborUpdate(null, client));
+            endpoint.send(right, new NeighborUpdate(client, null));
         }
 
         private void handleDeregisterRequest(DeregisterRequest request) {
             lock.writeLock().lock();
-            int index = clientCollection.indexOf(request.getId());
-            if (index != -1) {
-                clientCollection.remove(index);
+            int clientIndex = clientCollection.indexOf(request.getId());
+            if (clientIndex != -1) {
+                return;
             }
+
+            InetSocketAddress left = clientCollection.getLeftNeighorOf(clientIndex);
+            InetSocketAddress right = clientCollection.getRightNeighorOf(clientIndex);
+
+            endpoint.send(left, new NeighborUpdate(null, right));
+            endpoint.send(right, new NeighborUpdate(left, null));
+
+            clientCollection.remove(clientIndex);
             lock.writeLock().unlock();
         }
 

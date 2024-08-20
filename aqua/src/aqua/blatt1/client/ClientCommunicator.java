@@ -1,18 +1,19 @@
 package aqua.blatt1.client;
 
 import java.net.InetSocketAddress;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
+import aqua.blatt1.common.msgtypes.*;
 import messaging.Endpoint;
 import messaging.Message;
 import aqua.blatt1.common.FishModel;
 import aqua.blatt1.common.Properties;
-import aqua.blatt1.common.msgtypes.DeregisterRequest;
-import aqua.blatt1.common.msgtypes.HandoffRequest;
-import aqua.blatt1.common.msgtypes.RegisterRequest;
-import aqua.blatt1.common.msgtypes.RegisterResponse;
 
 public class ClientCommunicator {
 	private final Endpoint endpoint;
+	private InetSocketAddress left = null;
+	private InetSocketAddress right = null;
 
 	public ClientCommunicator() {
 		endpoint = new Endpoint();
@@ -34,7 +35,14 @@ public class ClientCommunicator {
 		}
 
 		public void handOff(FishModel fish) {
-			endpoint.send(broker, new HandoffRequest(fish));
+			switch (fish.getDirection()) {
+				case LEFT:
+					retryUntilNotNull(() -> left, target -> endpoint.send(target, new HandoffRequest(fish)));
+					break;
+				case RIGHT:
+					retryUntilNotNull(() -> right, target -> endpoint.send(target, new HandoffRequest(fish)));
+					break;
+			}
 		}
 	}
 
@@ -56,6 +64,14 @@ public class ClientCommunicator {
 				if (msg.getPayload() instanceof HandoffRequest)
 					tankModel.receiveFish(((HandoffRequest) msg.getPayload()).getFish());
 
+				if (msg.getPayload() instanceof NeighborUpdate neighborUpdate) {
+                    if (neighborUpdate.getLeftOrNull() != null) {
+						left = neighborUpdate.getLeftOrNull();
+					}
+					if (neighborUpdate.getRightOrNull() != null) {
+						right = neighborUpdate.getRightOrNull();
+					}
+				}
 			}
 			System.out.println("Receiver stopped.");
 		}
@@ -69,4 +85,17 @@ public class ClientCommunicator {
 		return new ClientReceiver(tankModel);
 	}
 
+
+	public static <T> void retryUntilNotNull(Supplier<T> supplier, Consumer<T> action) {
+		T value;
+		while ((value = supplier.get()) == null) {
+			try {
+				Thread.sleep(100);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				return;
+			}
+		}
+		action.accept(value);
+	}
 }
