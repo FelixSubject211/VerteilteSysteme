@@ -5,10 +5,10 @@ import aqua.blatt1.common.msgtypes.DeregisterRequest;
 import aqua.blatt1.common.msgtypes.HandoffRequest;
 import aqua.blatt1.common.msgtypes.RegisterRequest;
 import aqua.blatt1.common.msgtypes.RegisterResponse;
+import aqua.blatt1.poisoner.PoisonPill;
 import messaging.Endpoint;
 import messaging.Message;
 
-import javax.swing.*;
 import java.io.Serializable;
 import java.net.InetSocketAddress;
 import java.util.UUID;
@@ -68,7 +68,9 @@ public class Broker {
         public void run() {
             Serializable content = msg.getPayload();
 
-            if (content instanceof RegisterRequest) {
+            if (content instanceof PoisonPill) {
+                shutdown();
+            } else if (content instanceof RegisterRequest) {
                 handleRegisterRequest(msg.getSender());
             } else if (content instanceof DeregisterRequest deregisterRequest) {
                 handleDeregisterRequest(deregisterRequest);
