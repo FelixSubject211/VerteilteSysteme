@@ -8,6 +8,7 @@ import aqua.blatt1.common.msgtypes.RegisterResponse;
 import messaging.Endpoint;
 import messaging.Message;
 
+import javax.swing.*;
 import java.io.Serializable;
 import java.net.InetSocketAddress;
 import java.util.UUID;
@@ -23,6 +24,8 @@ public class Broker {
     private final Endpoint endpoint;
     private final ReadWriteLock lock;
 
+    private volatile boolean stopRequested = false;
+
     public static void main(String[] args) {
         Broker broker = new Broker();
         Runtime.getRuntime().addShutdownHook(new Thread(broker::shutdown));
@@ -35,16 +38,18 @@ public class Broker {
         this.lock = new ReentrantReadWriteLock();
 
         new Receiver().start();
+        new StopGuiThread(v -> shutdown()).start();
     }
 
     public void shutdown() {
+        stopRequested = true;
         executorService.shutdown();
     }
 
     public class Receiver extends Thread {
         @Override
         public void run() {
-            while (!isInterrupted()) {
+            while (!isInterrupted() && !stopRequested) {
                 Message msg = endpoint.blockingReceive();
                 executorService.submit(new BrokerTask(msg));
             }
