@@ -87,10 +87,10 @@ public class Broker {
             InetSocketAddress client = clientCollection.getClient(clientIndex);
             InetSocketAddress left = clientCollection.getLeftNeighorOf(clientIndex);
             InetSocketAddress right = clientCollection.getRightNeighorOf(clientIndex);
+            endpoint.send(address, new RegisterResponse(id,left,right, clientCollection.size() == 1));
 
             lock.writeLock().unlock();
 
-            endpoint.send(address, new RegisterResponse(id,left,right));
             endpoint.send(left, new NeighborUpdate(null, client));
             endpoint.send(right, new NeighborUpdate(client, null));
         }

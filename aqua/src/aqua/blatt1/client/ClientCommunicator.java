@@ -39,6 +39,10 @@ public class ClientCommunicator {
 					break;
 			}
 		}
+
+		public void sendToken(TankModel tankModel) {
+			endpoint.send(tankModel.left, new Token());
+		}
 	}
 
 	public class ClientReceiver extends Thread {
@@ -57,8 +61,11 @@ public class ClientCommunicator {
 					tankModel.left = ((RegisterResponse) msg.getPayload()).getLeft();
 					tankModel.right = ((RegisterResponse) msg.getPayload()).getRight();
 					tankModel.onRegistration(((RegisterResponse) msg.getPayload()).getId());
-				}
 
+					if (((RegisterResponse) msg.getPayload()).hasToken()) {
+						tankModel.receiveToken();
+					}
+				}
 
 				if (msg.getPayload() instanceof HandoffRequest)
 					tankModel.receiveFish(((HandoffRequest) msg.getPayload()).getFish());
@@ -70,6 +77,10 @@ public class ClientCommunicator {
 					if (neighborUpdate.getRightOrNull() != null) {
 						tankModel.right = neighborUpdate.getRightOrNull();
 					}
+				}
+
+				if(msg.getPayload() instanceof Token) {
+					tankModel.receiveToken();
 				}
 			}
 			System.out.println("Receiver stopped.");
