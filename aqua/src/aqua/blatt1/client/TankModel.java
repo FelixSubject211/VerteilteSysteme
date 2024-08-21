@@ -7,6 +7,7 @@ import java.util.concurrent.TimeUnit;
 
 import aqua.blatt1.common.Direction;
 import aqua.blatt1.common.FishModel;
+import aqua.blatt1.common.msgtypes.SnapshotToken;
 
 public class TankModel extends Observable implements Iterable<FishModel> {
 
@@ -65,6 +66,10 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 	}
 
 	synchronized void receiveFish(FishModel fish) {
+		if (recordingState != RecordingState.IDLE) {
+			recordingFishCounter++;
+		}
+
 		fish.setToStart();
 		fishies.add(fish);
 	}
@@ -88,7 +93,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 			fish.update();
 
 			if (fish.hitsEdge()) {
-				if (hasToken) {
+				if (true) {
 					forwarder.handOff(fish, this);
 				} else {
 					fish.reverse();
@@ -126,6 +131,83 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 		} catch (IllegalStateException ignored) {}
 		if (hasToken) {
 			forwarder.sendToken(TankModel.this);
+		}
+	}
+
+	private RecordingState recordingState = RecordingState.IDLE;
+	private int recordingFishCounter = 0;
+	private boolean isInitiator = false;
+	private SnapshotToken snapshotToken = null;
+
+	public synchronized void initiateSnapshot() {
+		isInitiator = true;
+
+		recordingFishCounter = (int) fishies.stream()
+				.filter(fish -> !fish.isDeparting())
+				.count();
+
+		recordingState = RecordingState.BOTH;
+
+		forwarder.sendSnapshotMarker(left);
+		forwarder.sendSnapshotMarker(right);
+	}
+
+	public synchronized void receiveSnapshotToken(SnapshotToken snapshotToken) {
+		if(isInitiator) {
+			System.out.println(snapshotToken.getCount() + recordingFishCounter);
+		} else {
+			forwarder.sendSnapshotToken(left, new SnapshotToken(snapshotToken.getCount() + recordingFishCounter));
+		}
+	}
+
+	public synchronized void receiveSnapshotMarker(InetSocketAddress sender)  {
+		if(isInitiator) {
+			switch (recordingState) {
+				case BOTH:
+					if (sender.equals(left)) {
+						recordingState = RecordingState.RIGHT;
+					} else {
+						recordingState = RecordingState.LEFT;
+					}
+					break;
+				case LEFT:
+					if(sender.equals(left)) {
+						recordingState = RecordingState.IDLE;
+						forwarder.sendSnapshotToken(left, new SnapshotToken(0));
+					}
+					break;
+				case RIGHT:
+					if(sender.equals(right)) {
+						recordingState = RecordingState.IDLE;
+						forwarder.sendSnapshotToken(left, new SnapshotToken(0));
+					}
+					break;
+			}
+		} else {
+			switch (recordingState) {
+				case IDLE:
+					recordingFishCounter = (int) fishies.stream()
+							.filter(fish -> !fish.isDeparting())
+							.count();
+					if(sender.equals(left)) {
+						recordingState = RecordingState.RIGHT;
+						forwarder.sendSnapshotMarker(right);
+					} else {
+						recordingState = RecordingState.LEFT;
+						forwarder.sendSnapshotMarker(left);
+					}
+					break;
+				case LEFT:
+					if(sender.equals(left)) {
+						recordingState = RecordingState.IDLE;
+						forwarder.sendSnapshotMarker(right);
+					}
+				case RIGHT:
+					if(sender.equals(right)) {
+						recordingState = RecordingState.IDLE;
+						forwarder.sendSnapshotMarker(left);
+					}
+			}
 		}
 	}
 }
