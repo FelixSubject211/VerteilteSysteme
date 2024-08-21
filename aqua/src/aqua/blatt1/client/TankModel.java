@@ -121,6 +121,11 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 
 	public synchronized void finish() {
 		forwarder.deregister(id);
+		try {
+			timer.cancel();
+		} catch (IllegalStateException ignored) {}
+		if (hasToken) {
+			forwarder.sendToken(TankModel.this);
+		}
 	}
-
 }
