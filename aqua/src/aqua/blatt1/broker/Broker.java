@@ -98,7 +98,7 @@ public class Broker {
         private void handleDeregisterRequest(DeregisterRequest request) {
             lock.writeLock().lock();
             int clientIndex = clientCollection.indexOf(request.getId());
-            if (clientIndex != -1) {
+            if (clientIndex == -1) {
                 return;
             }
 
