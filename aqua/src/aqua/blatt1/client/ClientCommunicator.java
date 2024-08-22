@@ -29,15 +29,8 @@ public class ClientCommunicator {
 			endpoint.send(broker, new DeregisterRequest(id));
 		}
 
-		public void handOff(FishModel fish, TankModel tankModel) {
-			switch (fish.getDirection()) {
-				case LEFT:
-					endpoint.send(tankModel.left, new HandoffRequest(fish));
-					break;
-				case RIGHT:
-					endpoint.send(tankModel.right, new HandoffRequest(fish));
-					break;
-			}
+		public void handOff(FishModel fish, InetSocketAddress address) {
+			endpoint.send(address, new HandoffRequest(fish));
 		}
 
 		public void sendToken(TankModel tankModel) {
@@ -50,6 +43,10 @@ public class ClientCommunicator {
 
 		public void sendSnapshotToken(InetSocketAddress address, SnapshotToken snapshotToken) {
 			endpoint.send(address, snapshotToken);
+		}
+
+		public void sendLocationRequest(InetSocketAddress address, LocationRequest locationRequest) {
+			endpoint.send(address, locationRequest);
 		}
 	}
 
@@ -97,6 +94,10 @@ public class ClientCommunicator {
 
 				if (msg.getPayload() instanceof SnapshotToken token) {
 					tankModel.receiveSnapshotToken(token);
+				}
+
+				if (msg.getPayload() instanceof LocationRequest request) {
+					tankModel.locateFishGlobally(request.getFishId());
 				}
 			}
 			System.out.println("Receiver stopped.");
