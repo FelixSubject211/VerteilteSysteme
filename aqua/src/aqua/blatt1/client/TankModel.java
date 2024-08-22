@@ -8,11 +8,10 @@ import java.util.concurrent.TimeUnit;
 
 import aqua.blatt1.common.Direction;
 import aqua.blatt1.common.FishModel;
-import aqua.blatt1.common.msgtypes.HandoffRequest;
 import aqua.blatt1.common.msgtypes.LocationRequest;
+import aqua.blatt1.common.msgtypes.NameResolutionRequest;
+import aqua.blatt1.common.msgtypes.NameResolutionResponse;
 import aqua.blatt1.common.msgtypes.SnapshotToken;
-
-import javax.swing.*;
 
 public class TankModel extends Observable implements Iterable<FishModel> {
 
@@ -66,7 +65,6 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 			FishModel fish = new FishModel("fish" + (++fishCounter) + "@" + getId(), x, y,
 					rand.nextBoolean() ? Direction.LEFT : Direction.RIGHT);
 
-			fishIdToForwardReference.put(fish.getId(), FishForwardReference.HERE);
 			fishies.add(fish);
 		}
 	}
@@ -76,7 +74,11 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 			recordingFishCounter++;
 		}
 
-		fishIdToForwardReference.put(fish.getId(), FishForwardReference.HERE);
+		if (!fish.getTankId().equals(id)) {
+			forwarder.sendNameNameResolutionRequest(new NameResolutionRequest(fish.getTankId(), fish.getId()));
+		} else {
+			fishIdToAddress.remove(fish.getId());
+		}
 
 		fish.setToStart();
 		fishies.add(fish);
@@ -105,11 +107,9 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 					switch (fish.getDirection()) {
 						case LEFT:
 							forwarder.handOff(fish, left);
-							fishIdToForwardReference.put(fish.getId(), FishForwardReference.LEFT);
 							break;
 						case RIGHT:
 							forwarder.handOff(fish, right);
-							fishIdToForwardReference.put(fish.getId(), FishForwardReference.RIGHT);
 							break;
 					}
 				} else {
@@ -233,26 +233,26 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 		}
 	}
 
-	enum FishForwardReference {
-		HERE, LEFT, RIGHT
-	}
 
-	Map<String, FishForwardReference> fishIdToForwardReference = new HashMap<>();
+	Map<String, InetSocketAddress> fishIdToAddress = new HashMap<>();
 
 	public void locateFishGlobally(String fishId) {
-		switch (fishIdToForwardReference.get(fishId)) {
-			case LEFT:
-				forwarder.sendLocationRequest(left, new LocationRequest(fishId));
-				break;
-			case RIGHT:
-				forwarder.sendLocationRequest(right, new LocationRequest(fishId));
-				break;
-			case HERE:
-				fishies.stream()
-						.filter(fish -> fish.getId().equals(fishId))
-						.findFirst()
-						.ifPresent(FishModel::toggle);
-				break;
+		InetSocketAddress address = fishIdToAddress.get(fishId);
+
+		if (address == null) {
+			fishies.stream()
+					.filter(fish -> fish.getId().equals(fishId))
+					.findFirst()
+					.ifPresentOrElse(
+							FishModel::toggle,
+							() -> System.err.println("Error: Fish with ID " + fishId + " not found.")
+					);
+		} else {
+			forwarder.sendLocationRequest(address, new LocationRequest(fishId));
 		}
+	}
+
+	public void receiveNameResolutionResponse(NameResolutionResponse nameResolutionResponse) {
+		fishIdToAddress.put(nameResolutionResponse.getId(), nameResolutionResponse.getAddress());
 	}
 }
