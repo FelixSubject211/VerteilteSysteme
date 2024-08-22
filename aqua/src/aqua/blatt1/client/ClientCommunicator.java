@@ -48,6 +48,10 @@ public class ClientCommunicator {
 		public void sendLocationRequest(InetSocketAddress address, LocationRequest locationRequest) {
 			endpoint.send(address, locationRequest);
 		}
+
+		public void sendNameNameResolutionRequest(NameResolutionRequest nameResolutionRequest) {
+			endpoint.send(broker, nameResolutionRequest);
+		}
 	}
 
 	public class ClientReceiver extends Thread {
@@ -98,6 +102,10 @@ public class ClientCommunicator {
 
 				if (msg.getPayload() instanceof LocationRequest request) {
 					tankModel.locateFishGlobally(request.getFishId());
+				}
+
+				if (msg.getPayload() instanceof NameResolutionResponse response) {
+					tankModel.receiveNameResolutionResponse(response);
 				}
 			}
 			System.out.println("Receiver stopped.");

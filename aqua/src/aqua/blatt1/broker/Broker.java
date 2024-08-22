@@ -73,6 +73,8 @@ public class Broker {
                 handleDeregisterRequest(deregisterRequest);
             } else if (content instanceof HandoffRequest handoffRequest) {
                 handleHandoffRequest(handoffRequest, msg.getSender());
+            } else if (content instanceof NameResolutionRequest NameResolutionRequest) {
+                handleNameResolutionRequest(NameResolutionRequest, msg.getSender());
             } else {
                 System.out.println("Unknown message type: " + content.getClass().getName());
             }
@@ -126,6 +128,13 @@ public class Broker {
                 default:
                     System.out.println("Unknown fish direction: " + request.getFish().getDirection());
             }
+            lock.readLock().unlock();
+        }
+
+        private void handleNameResolutionRequest(NameResolutionRequest request, InetSocketAddress address) {
+            lock.readLock().lock();
+            InetSocketAddress target = clientCollection.getClient(clientCollection.indexOf(request.getTankId()));
+            endpoint.send(target, new NameResolutionResponse(address, request.getId()));
             lock.readLock().unlock();
         }
     }
