@@ -46,12 +46,10 @@ public class ClientCommunicator {
 
 		public void sendSnapshotMarker(InetSocketAddress address) {
 			endpoint.send(address, new SnapshotMarker());
-			System.out.println("send SnapshotMarker to" + address);
 		}
 
 		public void sendSnapshotToken(InetSocketAddress address, SnapshotToken snapshotToken) {
 			endpoint.send(address, snapshotToken);
-			System.out.println("send Token to" + address + " " + snapshotToken.getCount());
 		}
 	}
 
@@ -94,12 +92,10 @@ public class ClientCommunicator {
 				}
 
 				if (msg.getPayload() instanceof SnapshotMarker) {
-					System.out.println("rcv from SnapshotMarker " + msg.getSender());
 					tankModel.receiveSnapshotMarker(msg.getSender());
 				}
 
 				if (msg.getPayload() instanceof SnapshotToken token) {
-					System.out.println("rcv from " + msg.getSender() + " " + token.getCount());
 					tankModel.receiveSnapshotToken(token);
 				}
 			}

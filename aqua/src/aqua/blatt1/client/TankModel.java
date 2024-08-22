@@ -2,12 +2,15 @@ package aqua.blatt1.client;
 
 import java.net.InetSocketAddress;
 import java.util.*;
+import java.util.Timer;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import aqua.blatt1.common.Direction;
 import aqua.blatt1.common.FishModel;
 import aqua.blatt1.common.msgtypes.SnapshotToken;
+
+import javax.swing.*;
 
 public class TankModel extends Observable implements Iterable<FishModel> {
 
@@ -93,7 +96,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 			fish.update();
 
 			if (fish.hitsEdge()) {
-				if (true) {
+				if (hasToken) {
 					forwarder.handOff(fish, this);
 				} else {
 					fish.reverse();
@@ -137,7 +140,6 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 	private RecordingState recordingState = RecordingState.IDLE;
 	private int recordingFishCounter = 0;
 	private boolean isInitiator = false;
-	private SnapshotToken snapshotToken = null;
 
 	public synchronized void initiateSnapshot() {
 		isInitiator = true;
@@ -154,11 +156,17 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 
 	public synchronized void receiveSnapshotToken(SnapshotToken snapshotToken) {
 		if(isInitiator) {
-			System.out.println(snapshotToken.getCount() + recordingFishCounter);
+			String message = "Snapshot count: " + (snapshotToken.getCount() + recordingFishCounter);
+			setChanged();
+			notifyObservers(message);
 		} else {
 			forwarder.sendSnapshotToken(left, new SnapshotToken(snapshotToken.getCount() + recordingFishCounter));
 		}
+		isInitiator = false;
+		recordingFishCounter = 0;
+		recordingState = RecordingState.IDLE;
 	}
+
 
 	public synchronized void receiveSnapshotMarker(InetSocketAddress sender)  {
 		if(isInitiator) {
