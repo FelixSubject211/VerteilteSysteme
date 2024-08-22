@@ -9,20 +9,22 @@ import java.awt.event.MouseEvent;
 import java.util.Observable;
 import java.util.Observer;
 
-import javax.swing.JPanel;
-import javax.swing.SwingUtilities;
+import javax.swing.*;
 
 import aqua.blatt1.common.FishModel;
 
-@SuppressWarnings("serial")
 public class TankView extends JPanel implements Observer {
 	private final TankModel tankModel;
 	private final FishView fishView;
 	private final Runnable repaintRunnable;
+	private final JLabel statusLabel;
 
 	public TankView(final TankModel tankModel) {
 		this.tankModel = tankModel;
 		fishView = new FishView();
+
+		statusLabel = new JLabel("Snapshot count: 0");
+		add(statusLabel); // JLabel zur TankView hinzufügen
 
 		repaintRunnable = new Runnable() {
 			@Override
@@ -77,5 +79,8 @@ public class TankView extends JPanel implements Observer {
 	@Override
 	public void update(Observable o, Object arg) {
 		SwingUtilities.invokeLater(repaintRunnable);
+		if (arg instanceof String) {
+			statusLabel.setText((String) arg); // Update the JLabel with the snapshot count
+		}
 	}
 }
