@@ -1,5 +1,7 @@
 package aqua.blatt1.broker;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -12,17 +14,25 @@ public class ClientCollection<T> {
 	private class Client {
 		final String id;
 		final T client;
+		Instant expirationTime;
 
 		Client(String id, T client) {
 			this.id = id;
 			this.client = client;
+			this.expirationTime = Instant.now().plus(expirationDuration);
 		}
 	}
 
 	private final List<Client> clients;
+	private final Duration expirationDuration;
 
-	public ClientCollection() {
+	public ClientCollection(Duration expirationDuration) {
 		clients = new ArrayList<Client>();
+		this.expirationDuration = expirationDuration;
+	}
+
+	public void refreshExpirationDuration(int index) {
+		clients.get(index).expirationTime = Instant.now().plus(expirationDuration);
 	}
 
 	public ClientCollection<T> add(String id, T client) {
@@ -53,6 +63,10 @@ public class ClientCollection<T> {
 		return clients.get(index).client;
 	}
 
+	public String getClientId(int index) {
+		return clients.get(index).id;
+	}
+
 	public int size() {
 		return clients.size();
 	}
@@ -65,4 +79,10 @@ public class ClientCollection<T> {
 		return index < clients.size() - 1 ? clients.get(index + 1).client : clients.get(0).client;
 	}
 
+	public List<T> expiredClients() {
+		Instant now = Instant.now();
+		return clients.stream()
+				.filter(c -> c.expirationTime.isBefore(now))
+				.map(client -> client.client).toList();
+	}
 }
