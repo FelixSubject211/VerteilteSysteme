@@ -1,6 +1,7 @@
 package aqua.blatt1.broker;
 
 import aqua.blatt1.common.Properties;
+import aqua.blatt1.common.SecureEndpoint;
 import aqua.blatt1.common.msgtypes.*;
 import aqua.blatt1.poisoner.PoisonPill;
 import messaging.Endpoint;
@@ -42,7 +43,7 @@ public class Broker {
     public Broker() {
         this.clientCollection = new ClientCollection<>(Duration.ofSeconds(CLIENT_EXPIRATION_THRESHOLD_SECONDS));
         this.executorService = Executors.newFixedThreadPool(Properties.THREAD_POOL_SIZE);
-        this.endpoint = new Endpoint(Properties.PORT);
+        this.endpoint = new SecureEndpoint(Properties.PORT);
         this.lock = new ReentrantReadWriteLock();
         this.timer = new Timer();
 
