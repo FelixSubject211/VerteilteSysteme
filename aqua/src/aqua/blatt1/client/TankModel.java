@@ -8,10 +8,7 @@ import java.util.concurrent.TimeUnit;
 
 import aqua.blatt1.common.Direction;
 import aqua.blatt1.common.FishModel;
-import aqua.blatt1.common.msgtypes.LocationRequest;
-import aqua.blatt1.common.msgtypes.NameResolutionRequest;
-import aqua.blatt1.common.msgtypes.NameResolutionResponse;
-import aqua.blatt1.common.msgtypes.SnapshotToken;
+import aqua.blatt1.common.msgtypes.*;
 
 public class TankModel extends Observable implements Iterable<FishModel> {
 
@@ -48,13 +45,18 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 		}, 2000);
 	}
 
-	synchronized boolean hasToken() {
-		return hasToken;
-	}
+	synchronized void onRegistration(RegisterResponse response) {
+		if (id == null) {
+			this.id = response.getId();
+			newFish(WIDTH - FishModel.getXSize(), rand.nextInt(HEIGHT - FishModel.getYSize()));
+		}
 
-	synchronized void onRegistration(String id) {
-		this.id = id;
-		newFish(WIDTH - FishModel.getXSize(), rand.nextInt(HEIGHT - FishModel.getYSize()));
+		timer.schedule(new TimerTask() {
+			@Override
+			public void run() {
+				forwarder.register();
+			}
+		}, response.getLeaseDuration() * 1000L);
 	}
 
 	public synchronized void newFish(int x, int y) {

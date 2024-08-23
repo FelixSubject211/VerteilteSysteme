@@ -69,7 +69,7 @@ public class ClientCommunicator {
 				if (msg.getPayload() instanceof RegisterResponse) {
 					tankModel.left = ((RegisterResponse) msg.getPayload()).getLeft();
 					tankModel.right = ((RegisterResponse) msg.getPayload()).getRight();
-					tankModel.onRegistration(((RegisterResponse) msg.getPayload()).getId());
+					tankModel.onRegistration(((RegisterResponse) msg.getPayload()));
 
 					if (((RegisterResponse) msg.getPayload()).hasToken()) {
 						tankModel.receiveToken();
