@@ -35,34 +35,6 @@ public class TankModel extends Observable implements Iterable<FishModel>, Remote
 		this.client = (RemoteClient) UnicastRemoteObject.exportObject(this, 0);
 	}
 
-	synchronized void receiveToken() {
-		hasToken = true;
-
-		timer.schedule(new TimerTask() {
-			@Override
-			public void run() {
-				synchronized (TankModel.this) {
-					hasToken = false;
-					forwarder.sendToken(TankModel.this);
-				}
-			}
-		}, 2000);
-	}
-
-	synchronized void onRegistration(RegisterResponse response) {
-		if (id == null) {
-			this.id = response.getId();
-			newFish(WIDTH - FishModel.getXSize(), rand.nextInt(HEIGHT - FishModel.getYSize()));
-		}
-
-		timer.schedule(new TimerTask() {
-			@Override
-			public void run() {
-				forwarder.register();
-			}
-		}, response.getLeaseDuration() * 1000L);
-	}
-
 	public synchronized void newFish(int x, int y) {
 		if (fishies.size() < MAX_FISHIES) {
 			x = x > WIDTH - FishModel.getXSize() - 1 ? WIDTH - FishModel.getXSize() - 1 : x;
@@ -73,21 +45,6 @@ public class TankModel extends Observable implements Iterable<FishModel>, Remote
 
 			fishies.add(fish);
 		}
-	}
-
-	synchronized void receiveFish(FishModel fish) {
-		if (recordingState != RecordingState.IDLE) {
-			recordingFishCounter++;
-		}
-
-		if (!fish.getTankId().equals(id)) {
-			forwarder.sendNameNameResolutionRequest(new NameResolutionRequest(fish.getTankId(), fish.getId()));
-		} else {
-			fishIdToAddress.remove(fish.getId());
-		}
-
-		fish.setToStart();
-		fishies.add(fish);
 	}
 
 	public String getId() {
@@ -102,7 +59,7 @@ public class TankModel extends Observable implements Iterable<FishModel>, Remote
 		return fishies.iterator();
 	}
 
-	private synchronized void updateFishies() {
+	private synchronized void updateFishies() throws RemoteException {
 		for (Iterator<FishModel> it = iterator(); it.hasNext();) {
 			FishModel fish = it.next();
 
@@ -112,10 +69,10 @@ public class TankModel extends Observable implements Iterable<FishModel>, Remote
 				if (hasToken) {
 					switch (fish.getDirection()) {
 						case LEFT:
-							forwarder.handOff(fish, left);
+							left.handoffRequest(fish);
 							break;
 						case RIGHT:
-							forwarder.handOff(fish, right);
+							right.handoffRequest(fish);
 							break;
 					}
 				} else {
@@ -128,32 +85,32 @@ public class TankModel extends Observable implements Iterable<FishModel>, Remote
 		}
 	}
 
-	private synchronized void update() {
+	private synchronized void update() throws RemoteException {
 		updateFishies();
 		setChanged();
 		notifyObservers();
 	}
 
 	protected void run() {
-		forwarder.register();
-
 		try {
+			broker.registerRequest(client);
+
 			while (!Thread.currentThread().isInterrupted()) {
 				update();
 				TimeUnit.MILLISECONDS.sleep(10);
 			}
-		} catch (InterruptedException consumed) {
+		} catch (InterruptedException | RemoteException consumed) {
 			// allow method to terminate
 		}
 	}
 
-	public synchronized void finish() {
-		forwarder.deregister(id);
+	public synchronized void finish() throws RemoteException {
+		broker.deregisterRequest(client);
 		try {
 			timer.cancel();
 		} catch (IllegalStateException ignored) {}
 		if (hasToken) {
-			forwarder.sendToken(TankModel.this);
+			left.token();
 		}
 	}
 
@@ -161,7 +118,7 @@ public class TankModel extends Observable implements Iterable<FishModel>, Remote
 	private int recordingFishCounter = 0;
 	private boolean isInitiator = false;
 
-	public synchronized void initiateSnapshot() {
+	public synchronized void initiateSnapshot() throws RemoteException {
 		isInitiator = true;
 
 		recordingFishCounter = (int) fishies.stream()
@@ -170,25 +127,85 @@ public class TankModel extends Observable implements Iterable<FishModel>, Remote
 
 		recordingState = RecordingState.BOTH;
 
-		forwarder.sendSnapshotMarker(left);
-		forwarder.sendSnapshotMarker(right);
+		left.snapshotMarker(client);
+		right.snapshotMarker(client);
 	}
 
-	public synchronized void receiveSnapshotToken(SnapshotToken snapshotToken) {
-		if(isInitiator) {
-			String message = "Snapshot count: " + (snapshotToken.getCount() + recordingFishCounter);
-			setChanged();
-			notifyObservers(message);
-		} else {
-			forwarder.sendSnapshotToken(left, new SnapshotToken(snapshotToken.getCount() + recordingFishCounter));
+	Map<String, RemoteClient> fishIdToAddress = new HashMap<>();
+
+	@Override
+	public void registerResponse(String id, RemoteClient left, RemoteClient right, boolean hasToken, int leaseDuration) throws RemoteException {
+		if (this.id == null) {
+			this.id = id;
+			newFish(WIDTH - FishModel.getXSize(), rand.nextInt(HEIGHT - FishModel.getYSize()));
 		}
-		isInitiator = false;
-		recordingFishCounter = 0;
-		recordingState = RecordingState.IDLE;
+
+		this.left = left;
+		this.right = right;
+
+		if (hasToken && !this.hasToken) {
+			token();
+		}
+
+		timer.schedule(new TimerTask() {
+			@Override
+			public void run() {
+				try {
+					broker.registerRequest(client);
+				} catch (RemoteException e) {
+					throw new RuntimeException(e);
+				}
+			}
+		}, leaseDuration * 1000L);
 	}
 
+	@Override
+	public void handoffRequest(FishModel fish) throws RemoteException {
+		if (recordingState != RecordingState.IDLE) {
+			recordingFishCounter++;
+		}
 
-	public synchronized void receiveSnapshotMarker(InetSocketAddress sender)  {
+		if (!fish.getTankId().equals(id)) {
+			broker.nameResolutionRequest(client, fish.getTankId(), fish.getId());
+		} else {
+			fishIdToAddress.remove(fish.getId());
+		}
+
+		fish.setToStart();
+		fishies.add(fish);
+	}
+
+	@Override
+	public void token() throws RemoteException {
+		hasToken = true;
+
+		timer.schedule(new TimerTask() {
+			@Override
+			public void run() {
+				synchronized (TankModel.this) {
+					hasToken = false;
+					try {
+						left.token();
+					} catch (RemoteException ignored) {}
+				}
+			}
+		}, 2000);
+	}
+
+	@Override
+	public void neighborUpdate(RemoteClient leftOrNull, RemoteClient rightOrNull) throws RemoteException {
+		if (leftOrNull != null) {
+			this.left = leftOrNull;
+		}
+
+		if (rightOrNull != null) {
+			this.right = rightOrNull;
+		}
+	}
+
+	@Override
+	public void snapshotMarker(RemoteClient sender) throws RemoteException {
+		System.out.println(sender);
 		if(isInitiator) {
 			switch (recordingState) {
 				case BOTH:
@@ -201,13 +218,13 @@ public class TankModel extends Observable implements Iterable<FishModel>, Remote
 				case LEFT:
 					if(sender.equals(left)) {
 						recordingState = RecordingState.IDLE;
-						forwarder.sendSnapshotToken(left, new SnapshotToken(0));
+						left.snapshotToken(0);
 					}
 					break;
 				case RIGHT:
 					if(sender.equals(right)) {
 						recordingState = RecordingState.IDLE;
-						forwarder.sendSnapshotToken(left, new SnapshotToken(0));
+						left.snapshotToken(0);
 					}
 					break;
 			}
@@ -219,31 +236,44 @@ public class TankModel extends Observable implements Iterable<FishModel>, Remote
 							.count();
 					if(sender.equals(left)) {
 						recordingState = RecordingState.RIGHT;
-						forwarder.sendSnapshotMarker(right);
+						right.snapshotMarker(client);
 					} else {
 						recordingState = RecordingState.LEFT;
-						forwarder.sendSnapshotMarker(left);
+						left.snapshotMarker(client);
 					}
 					break;
 				case LEFT:
 					if(sender.equals(left)) {
 						recordingState = RecordingState.IDLE;
-						forwarder.sendSnapshotMarker(right);
+						right.snapshotMarker(client);
 					}
 				case RIGHT:
 					if(sender.equals(right)) {
 						recordingState = RecordingState.IDLE;
-						forwarder.sendSnapshotMarker(left);
+						left.snapshotMarker(client);
 					}
 			}
 		}
 	}
 
+	@Override
+	public void snapshotToken(int count) throws RemoteException {
+		System.out.println(count);
+		if(isInitiator) {
+			String message = "Snapshot count: " + (count + recordingFishCounter);
+			setChanged();
+			notifyObservers(message);
+		} else {
+			left.snapshotToken(count + recordingFishCounter);
+		}
+		isInitiator = false;
+		recordingFishCounter = 0;
+		recordingState = RecordingState.IDLE;
+	}
 
-	Map<String, InetSocketAddress> fishIdToAddress = new HashMap<>();
-
-	public void locateFishGlobally(String fishId) {
-		InetSocketAddress address = fishIdToAddress.get(fishId);
+	@Override
+	public void locationRequest(String fishId) throws RemoteException {
+		RemoteClient address = fishIdToAddress.get(fishId);
 
 		if (address == null) {
 			fishies.stream()
@@ -254,51 +284,12 @@ public class TankModel extends Observable implements Iterable<FishModel>, Remote
 							() -> System.err.println("Error: Fish with ID " + fishId + " not found.")
 					);
 		} else {
-			forwarder.sendLocationRequest(address, new LocationRequest(fishId));
+			address.locationRequest(fishId);
 		}
-	}
-
-	public void receiveNameResolutionResponse(NameResolutionResponse nameResolutionResponse) {
-		fishIdToAddress.put(nameResolutionResponse.getId(), nameResolutionResponse.getAddress());
-	}
-
-	@Override
-	public void registerResponse(String id, RemoteClient left, RemoteClient right, boolean hasToken, int leaseDuration) throws RemoteException {
-
-	}
-
-	@Override
-	public void handoffRequest(FishModel fish) throws RemoteException {
-
-	}
-
-	@Override
-	public void token() throws RemoteException {
-
-	}
-
-	@Override
-	public void neighborUpdate(RemoteClient leftOrNull, RemoteClient rightOrNull) throws RemoteException {
-
-	}
-
-	@Override
-	public void snapshotMarker() throws RemoteException {
-
-	}
-
-	@Override
-	public void snapshotToken(int count) throws RemoteException {
-
-	}
-
-	@Override
-	public void locationRequest(String fishId) throws RemoteException {
-
 	}
 
 	@Override
 	public void nameResolutionResponse(RemoteClient address, String id) throws RemoteException {
-
+		fishIdToAddress.put(id, address);
 	}
 }

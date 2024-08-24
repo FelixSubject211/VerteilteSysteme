@@ -52,9 +52,7 @@ public class Broker implements RemoteBroker {
                     int index = clientCollection.indexOf(client);
                     try {
                         deregisterRequest(clientCollection.getClient(index));
-                    } catch (RemoteException e) {
-                        throw new RuntimeException(e);
-                    }
+                    } catch (RemoteException ignored) {}
                 });
                 lock.writeLock().unlock();
 
@@ -127,7 +125,12 @@ public class Broker implements RemoteBroker {
     @Override
     public void nameResolutionRequest(RemoteClient address, String tankId, String id) throws RemoteException {
         lock.readLock().lock();
-        RemoteClient target = clientCollection.getClient(clientCollection.indexOf(tankId));
+        int index = clientCollection.indexOf(tankId);
+        if (index == -1) {
+            lock.readLock().unlock();
+            return;
+        }
+        RemoteClient target = clientCollection.getClient(index);
         target.nameResolutionResponse(address, id);
         lock.readLock().unlock();
     }

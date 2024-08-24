@@ -21,7 +21,7 @@ public interface RemoteClient extends Remote {
 
     public void neighborUpdate(RemoteClient leftOrNull, RemoteClient rightOrNull) throws RemoteException;
 
-    public void snapshotMarker() throws RemoteException;
+    public void snapshotMarker(RemoteClient sender) throws RemoteException;
 
     public void snapshotToken(int count) throws RemoteException;
 

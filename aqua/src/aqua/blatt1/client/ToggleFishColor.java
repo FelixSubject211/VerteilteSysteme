@@ -1,9 +1,8 @@
 package aqua.blatt1.client;
 
-import aqua.blatt1.common.FishModel;
-
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.rmi.RemoteException;
 
 public class ToggleFishColor implements ActionListener {
     TankModel tankModel;
@@ -16,6 +15,8 @@ public class ToggleFishColor implements ActionListener {
 
     @Override
     public void actionPerformed(ActionEvent e) {
-        tankModel.locateFishGlobally(fishId);
+        try {
+            tankModel.locationRequest(fishId);
+        } catch (RemoteException ignored) {}
     }
 }

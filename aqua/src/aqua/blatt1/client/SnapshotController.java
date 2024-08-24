@@ -2,6 +2,7 @@ package aqua.blatt1.client;
 
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.rmi.RemoteException;
 
 public class SnapshotController implements ActionListener {
     TankModel tankModel;
@@ -12,6 +13,10 @@ public class SnapshotController implements ActionListener {
 
     @Override
     public void actionPerformed(ActionEvent e) {
-        tankModel.initiateSnapshot();
+        try {
+            tankModel.initiateSnapshot();
+        } catch (RemoteException ex) {
+            throw new RuntimeException(ex);
+        }
     }
 }
