@@ -1,17 +1,19 @@
 package aqua.blatt1.client;
 
 import java.net.InetSocketAddress;
+import java.rmi.RemoteException;
+import java.rmi.server.UnicastRemoteObject;
 import java.util.*;
 import java.util.Timer;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
+import aqua.blatt1.broker.RemoteBroker;
 import aqua.blatt1.common.Direction;
 import aqua.blatt1.common.FishModel;
 import aqua.blatt1.common.msgtypes.*;
 
-public class TankModel extends Observable implements Iterable<FishModel> {
-
+public class TankModel extends Observable implements Iterable<FishModel>, RemoteClient {
 	public static final int WIDTH = 600;
 	public static final int HEIGHT = 350;
 	protected static final int MAX_FISHIES = 5;
@@ -19,16 +21,18 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 	protected volatile String id;
 	protected final Set<FishModel> fishies;
 	protected int fishCounter = 0;
-	protected final ClientCommunicator.ClientForwarder forwarder;
-	protected InetSocketAddress left = null;
-	protected InetSocketAddress right = null;
+	protected RemoteClient left = null;
+	protected RemoteClient right = null;
 	protected boolean hasToken = false;
 	protected final Timer timer;
+	protected final RemoteBroker broker;
+	public RemoteClient client;
 
-	public TankModel(ClientCommunicator.ClientForwarder forwarder) {
+	public TankModel(RemoteBroker broker) throws RemoteException {
 		this.fishies = Collections.newSetFromMap(new ConcurrentHashMap<FishModel, Boolean>());
-		this.forwarder = forwarder;
 		this.timer = new Timer();
+		this.broker = broker;
+		this.client = (RemoteClient) UnicastRemoteObject.exportObject(this, 0);
 	}
 
 	synchronized void receiveToken() {
@@ -256,5 +260,45 @@ public class TankModel extends Observable implements Iterable<FishModel> {
 
 	public void receiveNameResolutionResponse(NameResolutionResponse nameResolutionResponse) {
 		fishIdToAddress.put(nameResolutionResponse.getId(), nameResolutionResponse.getAddress());
+	}
+
+	@Override
+	public void registerResponse(String id, RemoteClient left, RemoteClient right, boolean hasToken, int leaseDuration) throws RemoteException {
+
+	}
+
+	@Override
+	public void handoffRequest(FishModel fish) throws RemoteException {
+
+	}
+
+	@Override
+	public void token() throws RemoteException {
+
+	}
+
+	@Override
+	public void neighborUpdate(RemoteClient leftOrNull, RemoteClient rightOrNull) throws RemoteException {
+
+	}
+
+	@Override
+	public void snapshotMarker() throws RemoteException {
+
+	}
+
+	@Override
+	public void snapshotToken(int count) throws RemoteException {
+
+	}
+
+	@Override
+	public void locationRequest(String fishId) throws RemoteException {
+
+	}
+
+	@Override
+	public void nameResolutionResponse(RemoteClient address, String id) throws RemoteException {
+
 	}
 }
