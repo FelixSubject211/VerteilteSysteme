@@ -1,94 +1,120 @@
 package aqua.blatt1.common;
 
+
 import messaging.Endpoint;
 import messaging.Message;
-
-import javax.crypto.Cipher;
-import javax.crypto.spec.SecretKeySpec;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.Serializable;
+import javax.crypto.*;
+import java.io.*;
 import java.net.InetSocketAddress;
-import java.security.Key;
+import java.security.*;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class SecureEndpoint extends Endpoint {
-    private static final String KEY_STRING = "CAFEBABECAFEBABE";
-    private static final String ALGORITHM = "AES";
-    private final Key key;
-    private final Cipher encryptCipher;
-    private final Cipher decryptCipher;
+    private static final String ALGORITHM = "RSA";
+    private final Lock lock = new ReentrantLock();
+    private final Map<InetSocketAddress, Key> keys = new HashMap<>();
+    private KeyPair keyPair;
 
     public SecureEndpoint() {
         super();
-        key = generateKey();
-        encryptCipher = createCipher(Cipher.ENCRYPT_MODE);
-        decryptCipher = createCipher(Cipher.DECRYPT_MODE);
+        createKeyPair();
     }
-
     public SecureEndpoint(int port) {
         super(port);
-        key = generateKey();
-        encryptCipher = createCipher(Cipher.ENCRYPT_MODE);
-        decryptCipher = createCipher(Cipher.DECRYPT_MODE);
+        createKeyPair();
     }
 
-    private Key generateKey() {
-        return new SecretKeySpec(KEY_STRING.getBytes(), ALGORITHM);
-    }
-
-    private Cipher createCipher(int mode) {
+    private void createKeyPair() {
         try {
-            Cipher cipher = Cipher.getInstance(ALGORITHM);
-            cipher.init(mode, key);
-            return cipher;
+            KeyPairGenerator keyPairGen = KeyPairGenerator.getInstance(ALGORITHM);
+            keyPairGen.initialize(4096);
+            this.keyPair = keyPairGen.generateKeyPair();
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
     @Override
-    public void send(InetSocketAddress receiver, Serializable payload) {
+    public void send(InetSocketAddress address, Serializable payload) {
+        lock.lock();
+        if(!this.keys.containsKey(address)) {
+            super.send(address, new KeyExchangeMessage(keyPair.getPublic()));
+            Message message = super.blockingReceive();
+            if (message.getPayload() instanceof KeyExchangeMessage) {
+                keys.put(message.getSender(),((KeyExchangeMessage) message.getPayload()).key());
+                encrypt(address,payload);
+            }
+        } else {
+            encrypt(address, payload);
+        }
+        lock.unlock();
+    }
+
+    private void encrypt(InetSocketAddress address, Serializable payload) {
         try {
-            ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-            ObjectOutputStream objectOutputStream = new ObjectOutputStream(byteArrayOutputStream);
-            objectOutputStream.writeObject(payload);
-            byte[] serializedPayload = byteArrayOutputStream.toByteArray();
-            byte[] encryptedPayload = encryptCipher.doFinal(serializedPayload);
-            super.send(receiver, encryptedPayload);
+            Cipher encryptCipher = Cipher.getInstance(ALGORITHM);
+            encryptCipher.init(Cipher.ENCRYPT_MODE, this.keys.get(address));
+            byte[] encrypted = encryptCipher.doFinal(toBytes(payload));
+            super.send(address, encrypted);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
-    private Serializable decryptPayload(byte[] encryptedPayload) {
+    private byte[] toBytes(Object object) throws IOException {
+        try (ByteArrayOutputStream arrayOutputStream = new ByteArrayOutputStream();
+             ObjectOutputStream objectOutputStream = new ObjectOutputStream(arrayOutputStream)) {
+            objectOutputStream.writeObject(object);
+            return arrayOutputStream.toByteArray();
+        }
+    }
+
+    private Object fromBytes(byte[] bytes) throws IOException, ClassNotFoundException {
+        ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(bytes);
+        ObjectInputStream objectInputStream = new ObjectInputStream(byteArrayInputStream);
+        return objectInputStream.readObject();
+    }
+
+    private Message decrypt(Message encryptedMessage) {
         try {
-            byte[] decryptedPayload = decryptCipher.doFinal(encryptedPayload);
-            ObjectInputStream objectInputStream = new ObjectInputStream(new ByteArrayInputStream(decryptedPayload));
-            return (Serializable) objectInputStream.readObject();
+            Cipher decryptCipher = Cipher.getInstance(ALGORITHM);
+            decryptCipher.init(Cipher.DECRYPT_MODE, this.keyPair.getPrivate());
+            byte[] decrypted = decryptCipher.doFinal((byte[]) encryptedMessage.getPayload());
+            return new Message((Serializable) fromBytes(decrypted), encryptedMessage.getSender());
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private void sendRsaKeyBack(Message encryptedMessage) {
+        if (!this.keys.containsKey(encryptedMessage.getSender())) {
+            keys.put(encryptedMessage.getSender(),((KeyExchangeMessage) encryptedMessage.getPayload()).key());
+        }
+        super.send(encryptedMessage.getSender(), new KeyExchangeMessage(this.keyPair.getPublic()));
     }
 
     @Override
     public Message blockingReceive() {
-        Message receivedMessage = super.blockingReceive();
-        Serializable decryptedPayload = decryptPayload((byte[]) receivedMessage.getPayload());
-        return new Message(decryptedPayload, receivedMessage.getSender());
+        Message encryptedMessage = super.blockingReceive();
+        if (encryptedMessage.getPayload() instanceof KeyExchangeMessage) {
+            sendRsaKeyBack(encryptedMessage);
+            return blockingReceive();
+        }
+        return decrypt(encryptedMessage);
     }
 
     @Override
     public Message nonBlockingReceive() {
-        Message receivedMessage = super.nonBlockingReceive();
-
-        if (receivedMessage == null) {
-            return null;
+        Message encryptedMessage = super.nonBlockingReceive();
+        if (encryptedMessage.getPayload() instanceof KeyExchangeMessage) {
+            sendRsaKeyBack(encryptedMessage);
+            return nonBlockingReceive();
         }
-
-        Serializable decryptedPayload = decryptPayload((byte[]) receivedMessage.getPayload());
-        return new Message(decryptedPayload, receivedMessage.getSender());
+        return decrypt(encryptedMessage);
     }
-}
 
+    public record KeyExchangeMessage(Key key) implements Serializable { }
+}
